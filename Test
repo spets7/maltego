@@ -1,0 +1,194 @@
+I'm unable to create or manage GitHub repositories directly on your behalf. However, I can guide you through the process of setting up a temporary public repository to host your Python script. Here's how you can do it:
+
+
+---u
+
+🛠️ Step-by-Step Guide to Create a Temporary Public GitHub Repository
+
+1. Create a New Repository on GitHub
+
+1. 
+
+
+2. 
+
+
+3. 
+
+
+4.  
+
+
+
+2. Upload Your Python Script
+
+1. 
+
+
+2. 
+
+
+3. 
+
+
+4.  
+
+
+
+3. Share the Public URL
+
+   
+
+
+
+ 
+
+
+Replace your-username with your actual GitHub username.
+
+
+---
+
+🧹 Optional: Set Up Automatic Cleanup
+
+If you want this repository to be temporary, you can manually delete it after a certain period:
+
+1. Navigate to the repository on GitHub.
+
+
+2. Click on "Settings".
+
+
+3. Scroll down to the "Danger Zone" section.
+
+
+import requests
+import subprocess
+import json
+import os
+from typing import List, Dict
+
+# --- Config (Edit These!) ---
+BITBUCKET_TOKEN = "your_bitbucket_token"
+WORKSPACE = "your_workspace"
+REPO = "your_repo"
+LLM_MODEL = "llama3"  # Or "mistral", "starcoder2"
+
+# --- 1. Fetch Open PRs ---
+def fetch_open_prs() -> List[Dict]:
+    """Get all open PRs in the repository."""
+    url = f"https://api.bitbucket.org/2.0/repositories/{WORKSPACE}/{REPO}/pullrequests"
+    headers = {"Authorization": f"Bearer {BITBUCKET_TOKEN}"}
+    params = {"state": "OPEN"}
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json().get("values", [])
+
+# --- 2. Select PR ---
+def select_pr(prs: List[Dict]) -> str:
+    """Let user choose a PR from the list."""
+    print("\nOpen PRs:")
+    for idx, pr in enumerate(prs):
+        print(f"{idx + 1}. PR#{pr['id']}: {pr['title']}")
+    choice = int(input("\nSelect a PR (number): ")) - 1
+    return str(prs[choice]["id"])
+
+# --- 3. Fetch PR Diff ---
+def fetch_pr_diff(pr_id: str) -> str:
+    """Get the diff content of a PR."""
+    url = f"https://api.bitbucket.org/2.0/repositories/{WORKSPACE}/{REPO}/pullrequests/{pr_id}/diff"
+    headers = {"Authorization": f"Bearer {BITBUCKET_TOKEN}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.text
+
+# --- 4. Static Analysis ---
+def run_pmd_analysis(file_path: str) -> List[Dict]:
+    """Run PMD static analysis on Java file."""
+    cmd = f"pmd -d {file_path} -R rulesets/java/quickstart.xml -f json"
+    result = subprocess.run(cmd.split(), capture_output=True, text=True)
+    return json.loads(result.stdout).get("violations", [])
+
+def run_checkstyle(file_path: str) -> List[Dict]:
+    """Run Checkstyle analysis on Java file."""
+    cmd = f"checkstyle -c google_checks.xml -f json {file_path}"
+    result = subprocess.run(cmd.split(), capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+# --- 5. Local LLM (Ollama) ---
+def ask_llm(prompt: str) -> str:
+    """Query local LLM for explanations."""
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": LLM_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.3}
+            }
+        )
+        return response.json().get("response", "").strip()
+    except Exception as e:
+        return f"LLM error: {str(e)}"
+
+# --- 6. Post Comment to PR ---
+def post_comment(pr_id: str, line: int, comment: str):
+    """Post review comment to Bitbucket."""
+    url = f"https://api.bitbucket.org/2.0/repositories/{WORKSPACE}/{REPO}/pullrequests/{pr_id}/comments"
+    headers = {"Authorization": f"Bearer {BITBUCKET_TOKEN}"}
+    data = {
+        "content": {"raw": comment},
+        "anchor": {"line": line}
+    }
+    requests.post(url, json=data, headers=headers)
+
+# --- MAIN WORKFLOW ---
+if __name__ == "__main__":
+    print("🚀 Starting Java PR Reviewer...")
+    
+    # 1. Get open PRs
+    open_prs = fetch_open_prs()
+    if not open_prs:
+        print("❌ No open PRs found.")
+        exit()
+    
+    # 2. Let user select a PR
+    pr_id = select_pr(open_prs)
+    print(f"\n🔍 Reviewing PR #{pr_id}...")
+    
+    # 3. Fetch and save PR diff
+    diff = fetch_pr_diff(pr_id)
+    with open("temp.java", "w") as f:
+        f.write(diff)
+    
+    # 4. Run static analysis
+    print("🛠️ Running static analysis...")
+    pmd_issues = run_pmd_analysis("temp.java")
+    checkstyle_issues = run_checkstyle("temp.java")
+    
+    # 5. Generate LLM explanations and post comments
+    print("💡 Generating AI reviews...")
+    for issue in pmd_issues[:3]:  # Limit to 3 issues for demo
+        prompt = f"""
+        Explain this Java issue and suggest a fix:
+        Rule: {issue['rule']}
+        Description: {issue['description']}
+        Code: {issue['context']}
+        """
+        llm_response = ask_llm(prompt)
+        if not llm_response.startswith("LLM error"):
+            post_comment(
+                pr_id,
+                issue["beginLine"],
+                f"🤖 **AI Review**: {llm_response}\n\n_(Found by PMD rule: {issue['rule']})_"
+            )
+    
+    # Clean up
+    os.remove("temp.java")
+    print("✅ Review completed! Check Bitbucket PR comments.")
+
+
+
+hese steps or have further questions, feel free to ask!
+
